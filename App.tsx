@@ -1,117 +1,149 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
+import React, { useState, useEffect } from 'react';
+import { SafeAreaView, View, Text, TextInput, Button, FlatList, StyleSheet, Alert } from 'react-native';
+import SQLite from 'react-native-sqlite-storage';
 
-import React from 'react';
-import type {PropsWithChildren} from 'react';
-import {
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  useColorScheme,
-  View,
-} from 'react-native';
+const db = SQLite.openDatabase(
+  {
+    name: 'MoviesDB.db',
+    location: 'default',
+  },
+  () => console.log('База даних відкрита'),
+  error => console.log(error)
+);
 
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
-
-type SectionProps = PropsWithChildren<{
+interface Movie {
+  id: number;
   title: string;
-}>;
-
-function Section({children, title}: SectionProps): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
-          },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
+  year: string;
+  director: string;
+  rating: string;
 }
 
-function App(): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
+const App: React.FC = () => {
+  const [title, setTitle] = useState<string>('');
+  const [year, setYear] = useState<string>('');
+  const [director, setDirector] = useState<string>('');
+  const [rating, setRating] = useState<string>('');
+  const [movies, setMovies] = useState<Movie[]>([]);
 
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
+  useEffect(() => {
+    db.transaction(tx => {
+      tx.executeSql(
+        'CREATE TABLE IF NOT EXISTS Movies (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, year INTEGER, director TEXT, rating REAL)',
+        [],
+        () => console.log('Таблиця успішно створена'),
+        error => console.log(error)
+      );
+    });
+    loadMovies();
+  }, []);
+
+  const addMovie = () => {
+    if (!title || !year || !director || !rating) {
+      Alert.alert(
+        "Попередження",
+        "Будь ласка, заповніть усі поля",
+        [
+          { text: "OK" }
+        ]
+      );
+      return;
+    }
+
+    db.transaction(tx => {
+      tx.executeSql(
+        'INSERT INTO Movies (title, year, director, rating) VALUES (?, ?, ?, ?)',
+        [title, year, director, parseFloat(rating)],
+        () => {
+          setTitle('');
+          setYear('');
+          setDirector('');
+          setRating('');
+          loadMovies(); // Перезавантаження списку фільмів
+        },
+        error => console.log(error)
+      );
+    });
+  };
+
+  const loadMovies = () => {
+    db.transaction(tx => {
+      tx.executeSql('SELECT * FROM Movies', [], (tx, results) => {
+        let allMovies = [];
+        for (let i = 0; i < results.rows.length; ++i) {
+          allMovies.push(results.rows.item(i));
+        }
+        setMovies(allMovies);
+      });
+    });
   };
 
   return (
-    <SafeAreaView style={backgroundStyle}>
-      <StatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={backgroundStyle.backgroundColor}
-      />
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={backgroundStyle}>
-        <Header />
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
-        </View>
-      </ScrollView>
+    <SafeAreaView style={{ flex: 1 }}>
+      <View style={styles.container}>
+        <TextInput
+          style={styles.inputStyle}
+          placeholder="Назва"
+          value={title}
+          onChangeText={setTitle}
+        />
+        <TextInput
+          style={styles.inputStyle}
+          placeholder="Рік"
+          value={year}
+          onChangeText={setYear}
+          keyboardType="numeric"
+        />
+        <TextInput
+          style={styles.inputStyle}
+          placeholder="Режисер"
+          value={director}
+          onChangeText={setDirector}
+        />
+        <TextInput
+          style={styles.inputStyle}
+          placeholder="Рейтинг"
+          value={rating}
+          onChangeText={setRating}
+          keyboardType="numeric"
+        />
+        <Button title="Додати фільм" onPress={addMovie} />
+        <FlatList
+          data={movies}
+          renderItem={({ item }) => (
+            <View style={styles.item}>
+              <Text style={styles.title}>{item.title}, {item.year}</Text>
+              <Text>Режисер: {item.director}</Text>
+              <Text>Рейтинг: {item.rating}</Text>
+            </View>
+          )}
+          keyExtractor={item => item.id.toString()}
+        />
+      </View>
     </SafeAreaView>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
+  container: {
+    flex: 1,
+    padding: 20,
   },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
+  inputStyle: {
+    width: '100%',
+    marginBottom: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: 'gray',
   },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
+  item: {
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'gray',
+    marginBottom: 10,
   },
-  highlight: {
-    fontWeight: '700',
+  title: {
+    fontWeight: 'bold',
   },
 });
 
